@@ -144,7 +144,6 @@ class MyDataset(Dataset):
 
     def __init__(self):
         self.test_data = torch.tensor(np.array(train_features))
-        self.y_data =
         self.len = n_train
 
     def __getitem__(self, index):
