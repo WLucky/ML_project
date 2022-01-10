@@ -1,17 +1,19 @@
-# %% [markdown]
+
 # ### 纲要
 # - 将数据统一到data2类型 connect
 # - Mean std取data2的
 # - Train val test 比例
 
-# %%
 import pandas as pd
 import warnings
 import pickle
 import datetime
 warnings.filterwarnings('ignore')
+from torch.utils.data import DataLoader,Dataset
+import numpy as np
+import torch
 
-# %% [markdown]
+
 # ### 数据项读取以及预处理
 # - 先将 train_public.csv 另存为 train_public2.csv，并对earlies_credit_mon改成短日期格式 ！！
 # - test_public 同上
@@ -136,5 +138,20 @@ test_features = pub_features[n_train: ]
 # %%
 # 去重
 # df.drop_duplicates(inplace=True)
+
+
+class MyDataset(Dataset):
+
+    def __init__(self):
+        self.test_data = torch.tensor(np.array(train_features))
+        self.y_data =
+        self.len = n_train
+
+    def __getitem__(self, index):
+        return self.test_data[index]
+
+    def __len__(self):
+        return self.len
+
 
 
