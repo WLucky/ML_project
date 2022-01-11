@@ -1,46 +1,43 @@
+import pdb
+
 import  torch
 import  torch.nn as nn
 import  torch.nn.functional as F
 import  torch.optim as optim
 from    torchvision import datasets, transforms
-
+from torch.utils.data import DataLoader, Subset
+from dataset import MyDataset
+from sampler import AverageSampler
 
 batch_size=200
-learning_rate=0.01
-epochs=10
+learning_rate=0.0005
+epochs=20
 
-train_loader = torch.utils.data.DataLoader(
-    datasets.MNIST('../data', train=True, download=True,
-                   transform=transforms.Compose([
-                       transforms.ToTensor(),
-                       transforms.Normalize((0.1307,), (0.3081,))
-                   ])),
-    batch_size=batch_size, shuffle=True)
-test_loader = torch.utils.data.DataLoader(
-    datasets.MNIST('../data', train=False, transform=transforms.Compose([
-        transforms.ToTensor(),
-        transforms.Normalize((0.1307,), (0.3081,))
-    ])),
-    batch_size=batch_size, shuffle=True)
-
+train_dataset = MyDataset(data="train_inter")
+test_dataset = MyDataset(data="train")
+# inter_train_dataset = Subset(train_dataset, range(0, 500000))
+# inter_test_dataset = Subset(train_dataset, range(500000, 750000))
+inter_train_dataset = train_dataset
+# inter_train_loader = DataLoader(inter_train_dataset, batch_size = batch_size, drop_last=True, shuffle=True)
+inter_test_loader = DataLoader(test_dataset, batch_size = batch_size, drop_last=True, shuffle=False)
+train_sampler = AverageSampler(train_dataset, batch_size)
+inter_train_loader = DataLoader(train_dataset, batch_sampler=train_sampler)
+# train_loader=DataLoader(train_dataset, batch_size = batch_size, drop_last=True, shuffle=True)
+test_loader=DataLoader(test_dataset, batch_size = batch_size, shuffle=False)
 
 class MLP(nn.Module):
 
     def __init__(self):
         super(MLP, self).__init__()
         self.model = nn.Sequential(
-            # 这里面可以添加继承自nn的方法来安排步骤
-            # linear的第一个参数是ch_in 第二个参数是ch_out
-            # inplace可以节约内存，就是不重新创建对象了，因为大小相同
-            nn.Linear(10000, 38),
-            nn.ReLU(inplace=True),
             nn.Linear(38, 76),
             nn.ReLU(inplace=True),
             nn.Linear(76, 76),
             nn.ReLU(inplace=True),
+            nn.Linear(76, 2),
+            nn.Softmax()
         )
-        # 区别 以类为封装的代码会大写 如nn.ReLU,nn.Linear 需要先实例化再调用
-        #    以方法为封装的代码是小写 如F.relu,F.cross_entropy
+
     def forward(self, x):
         x = self.model(x)
 
@@ -48,41 +45,74 @@ class MLP(nn.Module):
 
 device = torch.device('cuda:0')
 net = MLP().to(device)
+# net = MLP()
 optimizer = optim.SGD(net.parameters(), lr=learning_rate)
+# criteon = nn.CrossEntropyLoss(weight=torch.tensor([0.2, 0.8])).to(device)
 criteon = nn.CrossEntropyLoss().to(device)
 
+scheduler = optim.lr_scheduler.MultiStepLR(optimizer,
+                                           milestones=[10], gamma=0.1)
+# criteon = nn.CrossEntropyLoss()
+# a=torch.randn(79,38)
+# t=net(a)
+# print(t)
 for epoch in range(epochs):
-
-    for batch_idx, (data, target) in enumerate(train_loader):
-        data = data.view(-1, 28*28)
-        data, target = data.to(device), target.cuda()
-
-        logits = net(data)
+    net.train()
+    batch_idx=0
+    total_one = 0
+    for (data, target) in inter_train_loader:
+        data, target = data.to(device), target.to(device)
+        # data, target = data, target
+        logits = net(data.to(torch.float32))
         loss = criteon(logits, target)
 
         optimizer.zero_grad()
         loss.backward()
         # print(w1.grad.norm(), w2.grad.norm())
         optimizer.step()
-
-        if batch_idx % 100 == 0:
+        # scheduler.step()
+        batch_idx+=1
+        if batch_idx % 50 == 0:
             print('Train Epoch: {} [{}/{} ({:.0f}%)]\tLoss: {:.6f}'.format(
-                epoch, batch_idx * len(data), len(train_loader.dataset),
-                       100. * batch_idx / len(train_loader), loss.item()))
+                epoch, batch_idx * len(data), len(inter_train_dataset),
+                       100. * batch_idx / len(inter_train_dataset), loss.item()))
+        total_one += target.sum()
+    print("train total one: ", total_one)
 
+    with torch.no_grad():
+        net.eval()
+        test_loss = 0
+        correct = 0
+        total_one = 0
+        for data, target in inter_test_loader:
+            data, target = data.to(device), target.cuda()
+            # data, target = data, target
+            logits = net(data.to(torch.float32))
+            test_loss += criteon(logits, target).item()
+            pred = logits.data.max(1)[1]
+            correct += pred.eq(target.data).sum()
+            total_one += target.sum()
+        print("total one: ", total_one)
+        test_loss /= len(test_dataset)
+        print('\nInter test set: Average loss: {:.4f}, Accuracy: {}/{} ({:.0f}%)\n'.format(
+            test_loss, correct, len(inter_test_dataset),
+            100. * correct / len(inter_test_dataset)))
 
-    test_loss = 0
-    correct = 0
-    for data, target in test_loader:
-        data = data.view(-1, 28 * 28)
-        data, target = data.to(device), target.cuda()
-        logits = net(data)
-        test_loss += criteon(logits, target).item()
-
-        pred = logits.data.max(1)[1]
-        correct += pred.eq(target.data).sum()
-
-    test_loss /= len(test_loader.dataset)
-    print('\nTest set: Average loss: {:.4f}, Accuracy: {}/{} ({:.0f}%)\n'.format(
-        test_loss, correct, len(test_loader.dataset),
-        100. * correct / len(test_loader.dataset)))
+    with torch.no_grad():
+        net.eval()
+        test_loss = 0
+        correct = 0
+        total_one = 0
+        for data, target in test_loader:
+            data, target = data.to(device), target.cuda()
+            # data, target = data, target
+            logits = net(data.to(torch.float32))
+            test_loss += criteon(logits, target).item()
+            pred = logits.data.max(1)[1]
+            correct += pred.eq(target.data).sum()
+            total_one += target.sum()
+        print("total one: ", total_one)
+        test_loss /= len(test_dataset)
+        print('\nTest set: Average loss: {:.4f}, Accuracy: {}/{} ({:.0f}%)\n'.format(
+            test_loss, correct, len(test_dataset),
+            100. * correct / len(test_dataset)))

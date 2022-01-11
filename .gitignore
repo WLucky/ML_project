@@ -129,4 +129,5 @@ dmypy.json
 .pyre/
 *.csv
 *.zip
+*.pkl
 .idea/

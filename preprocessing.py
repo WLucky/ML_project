@@ -1,27 +1,21 @@
-
-# ### 纲要
-# - 将数据统一到data2类型 connect
-# - Mean std取data2的
-# - Train val test 比例
-
 import pandas as pd
 import warnings
 import pickle
 import datetime
-warnings.filterwarnings('ignore')
 from torch.utils.data import DataLoader,Dataset
 import numpy as np
 import torch
+import pickle
 
-
+warnings.filterwarnings('ignore')
 # ### 数据项读取以及预处理
 # - 先将 train_public.csv 另存为 train_public2.csv，并对earlies_credit_mon改成短日期格式 ！！
 # - test_public 同上
 
 # %%
-train_pub = pd.read_csv('./train_public2.csv')
-test_pub = pd.read_csv('./test_public2.csv')
-train_internet = pd.read_csv('./train_internet.csv')
+train_pub = pd.read_csv('./dataset/csv/train_public2.csv')
+test_pub = pd.read_csv('./dataset/csv/test_public2.csv')
+train_internet = pd.read_csv('./dataset/csv/train_internet.csv')
 
 # %%
 print("##Public index:")
@@ -134,23 +128,53 @@ pub_features = pub_features.fillna(0)
 
 train_features = pub_features[: n_train]
 test_features = pub_features[n_train: ]
+train_labels = train_pub.isDefault
+inter_train_labels = train_internet.is_default
 
-# %%
-# 去重
-# df.drop_duplicates(inplace=True)
+train_features.to_pickle('./dataset/pkl/train_features.pkl')
+test_features.to_pickle('./dataset/pkl/test_features.pkl')
+inter_train_features.to_pickle('./dataset/pkl/inter_train_features.pkl')
+train_labels.to_pickle('./dataset/pkl/train_labels.pkl')
+inter_train_labels.to_pickle('./dataset/pkl/inter_train_labels.pkl')
 
 
 class MyDataset(Dataset):
 
-    def __init__(self):
-        self.test_data = torch.tensor(np.array(train_features))
-        self.len = n_train
+    def __init__(self,data):
+        self.data=data
+        if(data=="train"):
+            with open('./dataset/pkl/train_features.pkl', 'rb') as file:
+                train = pickle.load(file)
+            with open('./dataset/pkl/train_labels.pkl', 'rb') as file:
+                label = pickle.load(file)
+            self.train_data = torch.tensor(np.array(train))
+            self.train_label = torch.tensor(np.array(label))
+            self.len = len(train)
+        elif(data=="train_inter"):
+            with open('./dataset/pkl/inter_train_features.pkl', 'rb') as file:
+                train = pickle.load(file)
+            with open('./dataset/pkl/inter_train_labels', 'rb') as file:
+                label = pickle.load(file)
+            self.train_data = torch.tensor(np.array(train))
+            self.train_label = torch.tensor(np.array(label))
+            self.len = len(train)
+        elif(data=="test"):
+            with open('./dataset/pkl/test_features.pkl', 'rb') as file:
+                test = pickle.load(file)
+                self.test_data = torch.tensor(np.array(test))
+                self.len = len(test)
 
     def __getitem__(self, index):
-        return self.test_data[index]
+        if self.data=="train" or self.data=="train_inter":
+            return self.train_data[index],self.train_label[index]
+        else:
+            return self.test_data[index]
 
     def __len__(self):
-        return self.len
+        if self.data == "train" or self.data == "train_inter":
+            return len(self.train_data)
+        else:
+            return len(self.test_data)
 
 
 
