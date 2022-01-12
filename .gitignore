@@ -131,3 +131,6 @@ dmypy.json
 *.zip
 *.pkl
 .idea/
+result*/
+*.txt
+*.out

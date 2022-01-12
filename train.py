@@ -10,19 +10,16 @@ from dataset import MyDataset
 from sampler import AverageSampler
 
 batch_size=200
-learning_rate=0.0005
-epochs=20
+learning_rate=1e-4
+epochs=200
 
 train_dataset = MyDataset(data="train_inter")
 test_dataset = MyDataset(data="train")
-# inter_train_dataset = Subset(train_dataset, range(0, 500000))
-# inter_test_dataset = Subset(train_dataset, range(500000, 750000))
-inter_train_dataset = train_dataset
-# inter_train_loader = DataLoader(inter_train_dataset, batch_size = batch_size, drop_last=True, shuffle=True)
-inter_test_loader = DataLoader(test_dataset, batch_size = batch_size, drop_last=True, shuffle=False)
-train_sampler = AverageSampler(train_dataset, batch_size)
-inter_train_loader = DataLoader(train_dataset, batch_sampler=train_sampler)
-# train_loader=DataLoader(train_dataset, batch_size = batch_size, drop_last=True, shuffle=True)
+inter_train_dataset = Subset(train_dataset, range(0, 500000))
+inter_test_dataset = Subset(train_dataset, range(500000, 750000))
+inter_train_loader = DataLoader(inter_train_dataset, batch_size = batch_size, drop_last=True, shuffle=True)
+inter_test_loader = DataLoader(inter_test_dataset, batch_size = batch_size, drop_last=True, shuffle=False)
+
 test_loader=DataLoader(test_dataset, batch_size = batch_size, shuffle=False)
 
 class MLP(nn.Module):
@@ -30,13 +27,26 @@ class MLP(nn.Module):
     def __init__(self):
         super(MLP, self).__init__()
         self.model = nn.Sequential(
-            nn.Linear(38, 76),
+            nn.Linear(38, 128),
             nn.ReLU(inplace=True),
-            nn.Linear(76, 76),
+            nn.Linear(128, 256),
             nn.ReLU(inplace=True),
-            nn.Linear(76, 2),
+            nn.Linear(256, 256),
+            nn.ReLU(inplace=True),
+            nn.Linear(256, 256),
+            nn.ReLU(inplace=True),
+            nn.Linear(256, 2),
             nn.Softmax()
         )
+
+        self.__init_parameters()    
+
+    def __init_parameters(self):
+        for m in self.modules():
+            if isinstance(m, nn.Linear):
+                nn.init.xavier_uniform_(m.weight.data)
+                if m.bias is not None:
+                    nn.init.constant_(m.bias.data, 0.0)
 
     def forward(self, x):
         x = self.model(x)
@@ -46,12 +56,14 @@ class MLP(nn.Module):
 device = torch.device('cuda:0')
 net = MLP().to(device)
 # net = MLP()
-optimizer = optim.SGD(net.parameters(), lr=learning_rate)
+# optimizer = optim.SGD(net.parameters(), lr=learning_rate)
+optimizer = optim.Adam(net.parameters(), lr=learning_rate)
+
 # criteon = nn.CrossEntropyLoss(weight=torch.tensor([0.2, 0.8])).to(device)
 criteon = nn.CrossEntropyLoss().to(device)
 
 scheduler = optim.lr_scheduler.MultiStepLR(optimizer,
-                                           milestones=[10], gamma=0.1)
+                                           milestones=[100, 150], gamma=0.1)
 # criteon = nn.CrossEntropyLoss()
 # a=torch.randn(79,38)
 # t=net(a)
@@ -70,15 +82,14 @@ for epoch in range(epochs):
         loss.backward()
         # print(w1.grad.norm(), w2.grad.norm())
         optimizer.step()
-        # scheduler.step()
         batch_idx+=1
         if batch_idx % 50 == 0:
             print('Train Epoch: {} [{}/{} ({:.0f}%)]\tLoss: {:.6f}'.format(
                 epoch, batch_idx * len(data), len(inter_train_dataset),
-                       100. * batch_idx / len(inter_train_dataset), loss.item()))
+                       100. * batch_idx * len(data) / len(inter_train_dataset), loss.item()))
         total_one += target.sum()
     print("train total one: ", total_one)
-
+    scheduler.step()
     with torch.no_grad():
         net.eval()
         test_loss = 0
